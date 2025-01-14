@@ -1,7 +1,7 @@
 import argparse
-import os
 import base64
 import random
+import requests
 
 class CC_solver:
     def __init__(self):
@@ -14,8 +14,11 @@ class CC_solver:
 
     def decode_graph(self):
         '''
-        Function for changing rogal's graph string into matrix of adjacency
-        BgAONgo= --> [adj matrix]
+        Decodes base64 encoded string representing graph into an adjacency matrix.
+        
+        Example:
+            Input: "BgAONgo="
+            Output: Adjacency matrix
         '''
         buff = base64.b64decode(self.encoded_graph)
         n = int.from_bytes(buff[:2], byteorder='little')
@@ -36,26 +39,41 @@ class CC_solver:
 
     def parse_args(self):
         '''
-        Parses arguments
+        Parses arguments.
         Handles both rogal's string and path of file with rogal's string
         as an input
         '''
         # Parsing
         parser = argparse.ArgumentParser()
-        parser.add_argument("input", help="path of file with data or data string")
-        parser.add_argument("-i", "--iterations", help="set number of iterations", type=int, default=1)
-        parser.add_argument("-s", "--solution", help="show solution in readable form", action="store_true")
+
+        parser.add_argument("-i", "--iterations", type=int, default=1, help="set number of iterations")
+        parser.add_argument("-s", "--solution", action="store_true", help="show solution in readable form")
+
+        group_input = parser.add_mutually_exclusive_group(required=True)
+        group_input.add_argument("-r", "--raw", help="Provide a raw input string in Rogal's format")
+        group_input.add_argument("-p", "--path", help="Provide path to file including Rogal's format string")
+        group_input.add_argument("-n", "--net", nargs=2, type=int, metavar=('vertices_count', 'vertex_degree'),help="Provide ammount of graph vertices and vertex degree")
+
         args = parser.parse_args()
-        self.raw_input = args.input
         self.iterations = args.iterations
         self.show_solution = args.solution
 
         # Handling input string
-        if os.path.exists(self.raw_input):
-            with open(self.raw_input, 'r') as input_file:
+        if args.raw: # raw string is given as an input
+            self.encoded_graph = args.raw
+        if args.path: # path to file with string is given as an input
+            with open(args.path, 'r') as input_file:
                 self.encoded_graph = input_file.readline()
-        else:
-            self.encoded_graph = self.raw_input
+        if args.net: # request freshly generated graph from Rogal's server
+            nodes, degree = args.net[0], args.net[1]
+            if nodes % 2 != 0 and degree % 2 != 0:
+                raise Exception("Wrong parameters values")
+            
+            url = f"http://89.168.64.137:8080/gen_graph?nodes={nodes}&degree={degree}"
+            resp = requests.get(url)
+
+            json = resp.json()
+            self.encoded_graph = json["encodedGraph"]
 
     def find_solution(self):
         '''
@@ -114,11 +132,26 @@ class CC_solver:
             print(jakub_format(clique), end=' ')
 
     def run(self):
+        '''
+        Executes main logic of the program
+        '''
+        # handling input
         self.parse_args()
         self.decode_graph()
+
+        # printing adjacency matrix
+        if self.show_solution:
+            print(f"Solution for graph:")
+            for row in self.adj_matrix:
+                print(*row)
+
+        # solving given ammount of times
         for _ in range(self.iterations):
             self.find_solution()
-        self.output_solution()
+
+        self.output_solution() # solution
+
+        # more details about solution
         if self.show_solution:
             print(self.result_cliques)
             print(f"Len: {len(self.result_cliques)}")
